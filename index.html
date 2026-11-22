@@ -335,6 +335,7 @@ body{font-synthesis:none;font-family:"Jua","Noto Sans CJK KR","Noto Sans KR",san
 /* 소감 */
 .cfield{position:absolute;inset:0;overflow:hidden}
 .bub{position:absolute;max-width:28vw;background:#fff7e6;color:var(--ink);border:3px solid #e2b77a;border-radius:1.4vw;padding:1vh 1.2vw;font-size:clamp(14px,1.6vw,30px);box-shadow:0 .4vw 0 #c98f4c;cursor:pointer;animation:bubin .6s cubic-bezier(.2,1.6,.4,1), bubout 1s ease-in forwards;animation-delay:0s, var(--life,13s);word-break:keep-all}
+.bub.stay{animation:bubin .6s cubic-bezier(.2,1.6,.4,1)}
 .bub::after{content:"";position:absolute;left:18%;bottom:-1.1vw;border:.6vw solid transparent;border-top-color:#e2b77a}
 @keyframes bubin{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
 @keyframes bubout{to{transform:translateY(-4vh);opacity:0}}
@@ -1315,16 +1316,21 @@ const isBad = s => BAD.test(String(s).replace(/[\s.,!?~'"`·_\-*]/g, ''));
 function startBubbles(){
   if(H.bubT) return;
   H.bubShown = H.bubShown || new Set();
+  const MAX = 16;
   const spawn = () => {
     const f = $('#cfield'); if(!f){ clearInterval(H.bubT); H.bubT = null; return; }
-    if(f.childElementCount >= 16) return;
     const list = [...H.comments.entries()].filter(([, c]) => !c.hidden);
-    if(!list.length) return;
-    let fresh = list.filter(([pid]) => !H.bubShown.has(pid));
-    if(!fresh.length){ H.bubShown.clear(); fresh = list; }
-    const [pid, c] = fresh[Math.floor(Math.random()*fresh.length)];
+    const onScreen = new Set([...f.children].map(x => x.dataset.pid));
+    const stay = list.length <= MAX;
+    // 소감이 많아지면 머물던 말풍선도 차례로 사라지게
+    if(!stay) [...f.querySelectorAll('.bub.stay')].forEach(x => { x.style.setProperty('--life', (1 + Math.random()*10).toFixed(1) + 's'); x.classList.remove('stay'); });
+    if(!stay && f.childElementCount >= MAX) return;
+    let cand = list.filter(([pid]) => !onScreen.has(pid) && !H.bubShown.has(pid));
+    if(!cand.length && !stay){ H.bubShown = new Set(onScreen); cand = list.filter(([pid]) => !onScreen.has(pid)); }
+    if(!cand.length) return;
+    const [pid, c] = cand[Math.floor(Math.random()*cand.length)];
     H.bubShown.add(pid);
-    const b = document.createElement('div'); b.className = 'bub'; b.textContent = c.text; b.title = '누르면 이 소감을 숨겨요';
+    const b = document.createElement('div'); b.className = 'bub' + (stay ? ' stay' : ''); b.dataset.pid = pid; b.textContent = c.text; b.title = '누르면 이 소감을 숨겨요';
     b.style.setProperty('--life', (11 + Math.random()*4) + 's'); b.style.visibility = 'hidden';
     b.onclick = () => { c.hidden = true; b.remove(); renderStage(); };
     b.addEventListener('animationend', e => { if(e.animationName === 'bubout') b.remove(); });
@@ -1332,7 +1338,7 @@ function startBubbles(){
     const W = f.clientWidth, Hh = f.clientHeight, bw = b.offsetWidth, bh = b.offsetHeight;
     const others = [...f.children].filter(x => x !== b).map(x => ({x:x.offsetLeft, y:x.offsetTop, w:x.offsetWidth, h:x.offsetHeight}));
     let best = null, bestScore = Infinity;
-    for(let k = 0; k < 24; k++){
+    for(let k = 0; k < 40; k++){
       const x = Math.random()*Math.max(1, W - bw), y = Math.random()*Math.max(1, Hh - bh - 10);
       let s = 0; for(const o of others){ const ix = Math.max(0, Math.min(x+bw, o.x+o.w) - Math.max(x, o.x)), iy = Math.max(0, Math.min(y+bh+14, o.y+o.h+14) - Math.max(y, o.y)); s += ix*iy; }
       if(s < bestScore){ bestScore = s; best = {x, y}; if(s === 0) break; }
