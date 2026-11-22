@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>골든벨 퀴즈</title>
+<title>2026 도전! 골든벨</title>
 <script>
 /* ============================================================
    ▼ Firebase 연결 설정 — 여기에 Firebase 콘솔에서 복사한 설정을 붙여 넣으세요.
@@ -486,7 +486,7 @@ service cloud.firestore {
 <!-- ================= 학생 ================= -->
 <div id="stu" class="hidden">
   <div class="stuhead">
-    <div class="logo"><svg><use href="#bell"/></svg><span class="gold" id="sTitle">골든벨</span></div>
+    <div class="logo"><svg><use href="#bell"/></svg><span class="gold" id="sTitle">2026 도전! 골든벨</span></div>
     <div class="me" id="sMe"></div>
   </div>
   <div id="sBody"></div>
@@ -1263,7 +1263,7 @@ async function stuResume(){
     await getBackend(); await B.init();
     const room = await B.getRoom(S.code);
     if(!room){ SST.removeItem(SKEY); return stuJoinForm('방이 닫혔어요.'); }
-    $('#sTitle').textContent = room.title || '골든벨';
+    $('#sTitle').textContent = room.title || '2026 도전! 골든벨';
     const me = await B.getMyPlayer(S.code, S.pid);
     if(me){ S.av = me.avatar || S.av; return stuListen(); }
     stuJoinForm();
@@ -1290,7 +1290,7 @@ function stuJoinForm(err = ''){
       await getBackend(); await B.init();
       const room = await B.getRoom(code);
       if(!room){ $('#jGo').disabled = false; return $('#jErr').textContent = '방을 찾을 수 없어요. 코드를 확인해 주세요.'; }
-      $('#sTitle').textContent = room.title || '골든벨';
+      $('#sTitle').textContent = room.title || '2026 도전! 골든벨';
       if(S.code !== code || S.pid !== pid){ S.my = {}; S.localEnd = {}; S.av = null; }
       Object.assign(S, {code, pid});
       const st = await B.pinState(code, pid);
@@ -1389,7 +1389,7 @@ function stuRender(){
   const r = S.room, body = $('#sBody');
   if(S.kicked) return;
   if(!r){ body.innerHTML = `<div class="notice">방이 닫혔어요.</div>`; return; }
-  $('#sTitle').textContent = r.title || '골든벨';
+  $('#sTitle').textContent = r.title || '2026 도전! 골든벨';
   const sig = [r.state, r.qIndex, (r.eliminated||[]).length, (r.revived||[]).length, r.voided].join('|');
   stuMe(r);
   if(sig === S.lastSig && r.state === 'question') return;  // 입력 중인 답이 지워지지 않게
