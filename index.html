@@ -381,6 +381,8 @@ body{font-synthesis:none;font-family:"Jua","Noto Sans CJK KR","Noto Sans KR",san
       <button class="btn" id="btnAddShort">+ 단답형</button>
       <span style="flex:1"></span>
       <button class="btn ghost" style="color:var(--ink);border-color:#cfd5e8" id="btnSample">예시 문제 넣기</button>
+      <a class="btn primary" href="goldenbell_template.xlsx" download="골든벨_문제양식.xlsx" style="text-decoration:none">📥 엑셀 양식 받기</a>
+      <label class="btn primary">📤 엑셀 올리기<input type="file" id="xlsxImport" accept=".xlsx,.csv" hidden></label>
       <button class="btn ghost" style="color:var(--ink);border-color:#cfd5e8" id="btnExport">파일로 저장</button>
       <label class="btn ghost" style="color:var(--ink);border-color:#cfd5e8">파일 불러오기<input type="file" id="fileImport" accept=".json" hidden></label>
       <button class="btn danger" id="btnClear">전체 삭제</button>
@@ -392,7 +394,7 @@ body{font-synthesis:none;font-family:"Jua","Noto Sans CJK KR","Noto Sans KR",san
     <details class="guide"><summary>엑셀·구글 시트에서 한꺼번에 붙여 넣기</summary>
       <p class="small" style="margin:8px 0">열 순서: <b>유형 | 문제 | 보기1 | 보기2 | 보기3 | 보기4 | 정답 | 시간 | 그림주소</b> (유형: 객관식 / OX / 단답형). 시트에서 행을 복사해 아래에 붙여 넣으세요. 첫 줄이 '유형'이면 제목 줄로 보고 건너뜁니다.</p>
       <textarea class="paste" id="pasteArea" placeholder="여기에 붙여 넣기"></textarea>
-      <div class="row" style="margin-top:8px"><button class="btn" id="btnPasteAdd">뒤에 추가</button><button class="btn" id="btnPasteReplace">전부 바꾸기</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnPasteAdd">붙여 넣은 내용 읽기</button></div>
     </details>
   </div>
 
@@ -554,7 +556,7 @@ function avatarSVG(av, cls = '', tag = ''){
     <path d="M31 58c-2 10 2 18 6 20M89 58c2 10-2 18-6 20" stroke="${hair}" stroke-width="7" stroke-linecap="round" fill="none"/>
     <circle cx="60" cy="56" r="29" fill="${skin}" ${ol}/>
     <path d="M32 52c4-3 8-4 12-3M88 52c-4-3-8-4-12-3" stroke="${hair}" stroke-width="6" stroke-linecap="round"/>
-    <path d="M24 34l-14-6c-3-1-4 3-2 5l14 9z" fill="${shade(cap,.78)}" ${ol}/>
+    <path d="M39 29C28 28 15 36 10 53L37 46z" fill="${cap}" ${ol}/>
     <path d="M30 50c-2-20 12-32 30-32s32 12 30 32c-18-5-42-5-60 0z" fill="${cap}" ${ol}/>
     <path d="M30 50c18-5 42-5 60 0" fill="none" stroke="${shade(cap,.7)}" stroke-width="4"/>
     <path d="M50 49q10-12 20 0" fill="${hair}" stroke="#1b1f33" stroke-width="2.5"/>
@@ -703,17 +705,18 @@ function answerText(q, extra){
   const shown = String(q.answer).split(/[,，/]/).map(s => s.trim()).filter(Boolean);
   return shown.join(' / ');
 }
-function validateQuiz(quiz){
-  for(let i=0;i<quiz.length;i++){
-    const q = quiz[i], n = i+1;
-    if(!q.text.trim()) return `${n}번 문제 내용이 비어 있어요.`;
-    if(!acceptedSet(q).size) return `${n}번 정답이 비어 있거나 형식이 맞지 않아요.`;
-    if(q.type === 'mc'){
-      if(q.choices.filter(c => c.trim()).length < 2) return `${n}번 객관식 보기가 2개 이상 필요해요.`;
-      for(const k of acceptedSet(q)) if(!q.choices[+k-1] || !q.choices[+k-1].trim()) return `${n}번 정답 번호(${k})에 해당하는 보기가 없어요.`;
-    }
-    if(q.type === 'ox' && [...acceptedSet(q)].some(k => k !== 'O' && k !== 'X')) return `${n}번 OX 정답은 O 또는 X로 적어 주세요.`;
+function validateOne(q){
+  if(!q.text.trim()) return '문제 내용이 비어 있어요.';
+  if(!acceptedSet(q).size) return '정답이 비어 있거나 형식이 맞지 않아요.';
+  if(q.type === 'mc'){
+    if(q.choices.filter(c => c.trim()).length < 2) return '객관식 보기가 2개 이상 필요해요.';
+    for(const k of acceptedSet(q)) if(!q.choices[+k-1] || !q.choices[+k-1].trim()) return `정답 번호(${k})에 해당하는 보기가 없어요.`;
   }
+  if(q.type === 'ox' && [...acceptedSet(q)].some(k => k !== 'O' && k !== 'X')) return 'OX 정답은 O 또는 X로 적어 주세요.';
+  return null;
+}
+function validateQuiz(quiz){
+  for(let i=0;i<quiz.length;i++){ const e = validateOne(quiz[i]); if(e) return `${i+1}번 문제: ${e}`; }
   return null;
 }
 
@@ -763,24 +766,116 @@ function hostSetupInit(){
   $('#btnClear').onclick = () => { if(H.quiz.length && confirm('문제를 모두 지울까요?')){ H.quiz = []; renderQTable(); saveDraft(); } };
   $('#btnExport').onclick = () => { const blob = new Blob([JSON.stringify({title:H.title, opt:H.opt, quiz:H.quiz}, null, 2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (H.title || '골든벨') + '_문제.json'; a.click(); };
   $('#fileImport').onchange = async e => { const f = e.target.files[0]; if(!f) return; try{ const d = JSON.parse(await f.text()); H.quiz = (d.quiz || d).map(fixQ); if(d.title){ H.title = d.title; $('#optTitle').value = d.title; } renderQTable(); saveDraft(); toast(`${H.quiz.length}문제를 불러왔어요.`); }catch(err){ toast('파일을 읽지 못했어요.'); } e.target.value = ''; };
-  $('#btnPasteAdd').onclick = () => pasteImport(false); $('#btnPasteReplace').onclick = () => pasteImport(true);
+  $('#btnPasteAdd').onclick = () => pasteImport();
+  $('#xlsxImport').onchange = e => { const f = e.target.files[0]; if(f) importFile(f); e.target.value = ''; };
   $('#btnCreate').onclick = createRoom;
   renderQTable();
 }
 function fixQ(q){ return {type:['mc','ox','short'].includes(q.type) ? q.type : 'mc', text:q.text||'', choices:[0,1,2,3].map(i => (q.choices||[])[i] || ''), answer:String(q.answer ?? ''), time:+q.time || H.opt.time, img:q.img || ''}; }
 function addQ(type){ H.quiz.push(blankQ(type, H.opt.time)); renderQTable(); saveDraft(); const rows = $('#qBody').rows; rows[rows.length-1]?.querySelector('textarea')?.focus(); }
-function pasteImport(replace){
+const TYPE_MAP = {'객관식':'mc','mc':'mc','ox':'ox','o/x':'ox','o,x':'ox','단답형':'short','단답':'short','short':'short','주관식':'short'};
+function parseRows(rows){
+  const qs = [], errs = [];
+  rows.forEach((c, idx) => {
+    const line = idx + 1;
+    c = (c || []).map(v => String(v ?? '').trim());
+    if(!c.some(Boolean)) return;
+    if(c[0] === '유형') return;
+    const ty = TYPE_MAP[(c[0]||'').toLowerCase()];
+    if(!ty){ errs.push(`${line}번째 줄: 유형 "${c[0]}"을(를) 알 수 없어요. (객관식 / OX / 단답형)`); return; }
+    const time = parseInt(c[7], 10);
+    const q = {type:ty, text:c[1]||'', choices:[c[2],c[3],c[4],c[5]].map(s => s || ''), answer:(c[6]||'').replace(/\.0+$/, ''), time: time >= 5 && time <= 180 ? time : H.opt.time, img:c[8]||''};
+    if(ty === 'ox') q.answer = normOX(q.answer);
+    const e = validateOne(q);
+    if(e){ errs.push(`${line}번째 줄: ${e}`); return; }
+    qs.push(q);
+  });
+  return {qs, errs};
+}
+function showImport({qs, errs}, from){
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<div class="box"><h3>${esc(from)}에서 ${qs.length}문제를 읽었어요</h3>
+    ${qs.length ? `<div class="mlist" style="grid-template-columns:1fr;max-height:34vh;overflow:auto;margin-bottom:10px">${qs.map((q,i) => `<div><span>${i+1}. [${TYPE_LABEL[q.type]}] ${esc(q.text.slice(0,50))}</span><span class="small">정답 ${esc(q.answer)} · ${q.time}초</span></div>`).join('')}</div>` : ''}
+    ${errs.length ? `<p style="font-weight:800;color:#c01;margin:8px 0">고쳐야 할 줄 ${errs.length}개 (이 줄은 빼고 넣어요)</p><div class="small" style="line-height:1.7;max-height:20vh;overflow:auto">${errs.map(esc).join('<br>')}</div>` : ''}
+    <div class="row" style="justify-content:flex-end;margin-top:16px">
+      ${qs.length ? `<button class="btn primary" data-act="add">뒤에 추가</button><button class="btn primary" data-act="rep">전부 바꾸기</button>` : ''}
+      <button class="btn" data-act="no">${qs.length ? '취소' : '닫기'}</button></div></div>`;
+  m.onclick = e => {
+    const a = e.target.dataset.act; if(!a && e.target !== m) return;
+    if(a === 'add' || a === 'rep'){ H.quiz = a === 'rep' ? qs : H.quiz.concat(qs); renderQTable(); saveDraft(); toast(`${qs.length}문제를 넣었어요.`); $('#pasteArea').value = ''; }
+    m.remove();
+  };
+  document.body.appendChild(m);
+}
+function pasteImport(){
   const t = $('#pasteArea').value.trim(); if(!t) return toast('붙여 넣은 내용이 없어요.');
-  const map = {'객관식':'mc','mc':'mc','ox':'ox','o/x':'ox','단답형':'short','단답':'short','short':'short','주관식':'short'};
-  const out = [];
-  for(const line of t.split(/\r?\n/)){
-    const c = line.split('\t'); if(!c[0] && !c[1]) continue;
-    const ty = map[(c[0]||'').trim().toLowerCase()];
-    if((c[0]||'').trim() === '유형') continue;
-    if(!ty){ toast(`유형을 알 수 없는 줄이 있어요: "${c[0]}"`, 4000); return; }
-    out.push({type:ty, text:(c[1]||'').trim(), choices:[c[2],c[3],c[4],c[5]].map(s => (s||'').trim()), answer:(c[6]||'').trim(), time:+c[7] || H.opt.time, img:(c[8]||'').trim()});
+  showImport(parseRows(t.split(/\r?\n/).map(l => l.split('\t'))), '붙여 넣은 내용');
+}
+/* ---- xlsx / csv 읽기 (외부 라이브러리 없이) ---- */
+async function unzipReader(buf){
+  const dv = new DataView(buf), dec = new TextDecoder();
+  let eocd = -1; for(let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 66000); i--) if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  if(eocd < 0) throw new Error('notzip');
+  const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true); const files = {};
+  for(let k = 0; k < n; k++){
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lho = dv.getUint32(p + 42, true);
+    files[dec.decode(new Uint8Array(buf, p + 46, nl))] = {method, csize, lho}; p += 46 + nl + el + cl;
   }
-  H.quiz = replace ? out : H.quiz.concat(out); renderQTable(); saveDraft(); $('#pasteArea').value = ''; toast(`${out.length}문제를 넣었어요.`);
+  return async name => {
+    const f = files[name]; if(!f) return null;
+    const off = f.lho + 30 + dv.getUint16(f.lho + 26, true) + dv.getUint16(f.lho + 28, true);
+    const data = new Uint8Array(buf, off, f.csize);
+    if(f.method === 0) return dec.decode(data);
+    const out = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+    return dec.decode(out);
+  };
+}
+async function readXlsx(buf){
+  const get = await unzipReader(buf);
+  const P = s => new DOMParser().parseFromString(s, 'application/xml');
+  const tags = (el, n) => [...el.getElementsByTagNameNS('*', n)];
+  const ssx = await get('xl/sharedStrings.xml');
+  const ss = ssx ? tags(P(ssx), 'si').map(si => tags(si, 't').map(x => x.textContent).join('')) : [];
+  const sheets = tags(P(await get('xl/workbook.xml')), 'sheet');
+  const rel = {}; tags(P(await get('xl/_rels/workbook.xml.rels')), 'Relationship').forEach(r => rel[r.getAttribute('Id')] = r.getAttribute('Target'));
+  const pick = sheets.find(s => (s.getAttribute('name')||'').trim() === '문제') || sheets[0];
+  const rid = [...pick.attributes].find(a => a.localName === 'id' && a.name !== 'sheetId')?.value;
+  let target = rel[rid] || 'worksheets/sheet1.xml';
+  target = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+  const sh = P(await get(target)); const rows = [];
+  tags(sh, 'row').forEach((r, ri) => {
+    const rn = r.getAttribute('r') ? +r.getAttribute('r') - 1 : ri; const row = []; let ci = 0;
+    tags(r, 'c').forEach(c => {
+      const ref = c.getAttribute('r'); const col = ref ? ref.replace(/\d+/g, '').split('').reduce((a, ch) => a*26 + ch.charCodeAt(0) - 64, 0) - 1 : ci;
+      const ty = c.getAttribute('t'), v = tags(c, 'v')[0]; let val = '';
+      if(ty === 's') val = ss[+(v && v.textContent)] ?? ''; else if(ty === 'inlineStr') val = tags(c, 't').map(x => x.textContent).join(''); else if(v) val = v.textContent;
+      row[col] = val; ci = col + 1;
+    });
+    rows[rn] = Array.from(row, x => x ?? '');
+  });
+  return Array.from(rows, x => x || []);
+}
+function parseCSV(s){
+  const rows = []; let row = [], f = '', q = false;
+  for(let i = 0; i < s.length; i++){
+    const ch = s[i];
+    if(q){ if(ch === '"'){ if(s[i+1] === '"'){ f += '"'; i++; } else q = false; } else f += ch; }
+    else if(ch === '"') q = true; else if(ch === ','){ row.push(f); f = ''; }
+    else if(ch === '\n' || ch === '\r'){ if(ch === '\r' && s[i+1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += ch;
+  }
+  if(f || row.length){ row.push(f); rows.push(row); }
+  return rows;
+}
+async function importFile(file){
+  try{
+    const buf = await file.arrayBuffer(); let rows;
+    if(/\.csv$/i.test(file.name)){
+      let s = new TextDecoder('utf-8').decode(buf); if(s.includes('�')) s = new TextDecoder('euc-kr').decode(buf);
+      rows = parseCSV(s.replace(/^﻿/, ''));
+    } else rows = await readXlsx(buf);
+    showImport(parseRows(rows), '엑셀 파일');
+  }catch(e){ console.error(e); toast(/\.xls$/i.test(file.name) ? '예전 엑셀(.xls)은 읽을 수 없어요. .xlsx로 저장해서 올려 주세요.' : '파일을 읽지 못했어요. 양식 파일(.xlsx)로 저장했는지 확인해 주세요.', 5000); }
 }
 function renderQTable(){
   $('#qCount').textContent = H.quiz.length ? `· ${H.quiz.length}문제` : '';
