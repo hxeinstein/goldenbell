@@ -249,6 +249,10 @@ details.guide pre{background:#0f1733;color:#d7e2ff;padding:12px;border-radius:10
 .revrow{display:flex;align-items:center;gap:2.5vw;flex-wrap:wrap;justify-content:center}
 .revrow .answerbox{margin-top:0;font-size:clamp(22px,3vw,58px);padding:1vh 2.4vw}
 .revrow .resline{margin-top:0}
+.revban{margin-top:2vh;background:linear-gradient(180deg,#ff8a3c,#e8394b);color:#fff;border-radius:999px;padding:.6vh 2vw;font-size:clamp(20px,2.4vw,46px);border:4px solid #fff3c4;box-shadow:0 .5vw 0 #8a2a10}
+.revban small{font-size:.55em;opacity:.95;margin-left:.6em}
+.seats.revseats .seat.wrong .sav{filter:grayscale(1);opacity:.55}
+.revnote{background:linear-gradient(180deg,#ff8a3c,#e8394b);color:#fff;font-weight:900;text-align:center;border-radius:12px;padding:8px;margin-bottom:10px;font-size:.95rem}
 .spect{background:#ff8a95;color:#4a0610;font-weight:900;text-align:center;border-radius:12px;padding:6px;margin-bottom:10px;font-size:.9rem}
 /* ===== 체육관 테마 (미리보기) ===== */
 :root{ --ink:#4a2e1a; --muted:#8a6a50; --cream:#fff7e6; --wood1:#e9c48f; --wood2:#d9a865; --wood3:#c98f4c; --board:#2f5a45; --board2:#264c3a; --frame:#9b6232; }
@@ -388,7 +392,7 @@ body{font-synthesis:none;font-family:"Jua","Noto Sans CJK KR","Noto Sans KR",san
       <button class="btn danger" id="btnClear">전체 삭제</button>
     </div>
     <div class="tw"><table class="qtable"><thead><tr>
-      <th style="width:38px">#</th><th style="width:96px">유형</th><th>문제</th><th style="width:34%">보기 (객관식만)</th><th style="width:120px">정답</th><th style="width:70px">시간</th><th style="width:150px">그림 주소(선택)</th><th style="width:84px"></th>
+      <th style="width:38px">#</th><th style="width:96px">유형</th><th>문제</th><th style="width:34%">보기 (객관식만)</th><th style="width:120px">정답</th><th style="width:70px">시간</th><th style="width:150px">그림 주소(선택)</th><th style="width:104px">패자부활 · 최대 인원</th><th style="width:84px"></th>
     </tr></thead><tbody id="qBody"></tbody></table></div>
     <p class="small" style="margin-top:8px">정답 적는 법 — 객관식: 번호(복수 정답은 <b>2,3</b>) · OX: <b>O</b> 또는 <b>X</b> · 단답형: 인정할 답을 쉼표로(<b>관성,관성의 법칙</b>). 단답형은 띄어쓰기·대소문자·문장부호를 무시하고 채점해요.</p>
     <details class="guide"><summary>엑셀·구글 시트에서 한꺼번에 붙여 넣기</summary>
@@ -774,7 +778,7 @@ function hostSetupInit(){
   $('#btnCreate').onclick = createRoom;
   renderQTable();
 }
-function fixQ(q){ return {type:['mc','ox','short'].includes(q.type) ? q.type : 'mc', text:q.text||'', choices:[0,1,2,3].map(i => (q.choices||[])[i] || ''), answer:String(q.answer ?? ''), time:+q.time || H.opt.time, img:q.img || ''}; }
+function fixQ(q){ return {type:['mc','ox','short'].includes(q.type) ? q.type : 'mc', text:q.text||'', choices:[0,1,2,3].map(i => (q.choices||[])[i] || ''), answer:String(q.answer ?? ''), time:+q.time || H.opt.time, img:q.img || '', revival:!!q.revival, maxRevive:+q.maxRevive > 0 ? Math.floor(+q.maxRevive) : null}; }
 function addQ(type){ H.quiz.push(blankQ(type, H.opt.time)); renderQTable(); saveDraft(); const rows = $('#qBody').rows; rows[rows.length-1]?.querySelector('textarea')?.focus(); }
 const TYPE_MAP = {'객관식':'mc','mc':'mc','ox':'ox','o/x':'ox','o,x':'ox','단답형':'short','단답':'short','short':'short','주관식':'short'};
 function parseRows(rows){
@@ -787,7 +791,8 @@ function parseRows(rows){
     const ty = TYPE_MAP[(c[0]||'').toLowerCase()];
     if(!ty){ errs.push(`${line}번째 줄: 유형 "${c[0]}"을(를) 알 수 없어요. (객관식 / OX / 단답형)`); return; }
     const time = parseInt(c[7], 10);
-    const q = {type:ty, text:c[1]||'', choices:[c[2],c[3],c[4],c[5]].map(s => s || ''), answer:(c[6]||'').replace(/\.0+$/, ''), time: time >= 5 && time <= 180 ? time : H.opt.time, img:c[8]||''};
+    const rv = /^(o|○|예|y|yes|1|v|✓|✔|패자부활)$/i.test((c[9]||'').trim()), mx = parseInt(c[10], 10);
+    const q = {type:ty, text:c[1]||'', choices:[c[2],c[3],c[4],c[5]].map(s => s || ''), answer:(c[6]||'').replace(/\.0+$/, ''), time: time >= 5 && time <= 180 ? time : H.opt.time, img:c[8]||'', revival:rv, maxRevive: rv && mx > 0 ? mx : null};
     if(ty === 'ox') q.answer = normOX(q.answer);
     const e = validateOne(q);
     if(e){ errs.push(`${line}번째 줄: ${e}`); return; }
@@ -798,7 +803,7 @@ function parseRows(rows){
 function showImport({qs, errs}, from){
   const m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = `<div class="box"><h3>${esc(from)}에서 ${qs.length}문제를 읽었어요</h3>
-    ${qs.length ? `<div class="mlist" style="grid-template-columns:1fr;max-height:34vh;overflow:auto;margin-bottom:10px">${qs.map((q,i) => `<div><span>${i+1}. [${TYPE_LABEL[q.type]}] ${esc(q.text.slice(0,50))}</span><span class="small">정답 ${esc(q.answer)} · ${q.time}초</span></div>`).join('')}</div>` : ''}
+    ${qs.length ? `<div class="mlist" style="grid-template-columns:1fr;max-height:34vh;overflow:auto;margin-bottom:10px">${qs.map((q,i) => `<div><span>${i+1}. ${q.revival ? '🔥' : ''}[${TYPE_LABEL[q.type]}] ${esc(q.text.slice(0,50))}</span><span class="small">정답 ${esc(q.answer)} · ${q.time}초${q.revival ? ` · 패자부활 ${q.maxRevive ? q.maxRevive + '명' : '모두'}` : ''}</span></div>`).join('')}</div>` : ''}
     ${errs.length ? `<p style="font-weight:800;color:#c01;margin:8px 0">고쳐야 할 줄 ${errs.length}개 (이 줄은 빼고 넣어요)</p><div class="small" style="line-height:1.7;max-height:20vh;overflow:auto">${errs.map(esc).join('<br>')}</div>` : ''}
     <div class="row" style="justify-content:flex-end;margin-top:16px">
       ${qs.length ? `<button class="btn primary" data-act="add">뒤에 추가</button><button class="btn primary" data-act="rep">전부 바꾸기</button>` : ''}
@@ -891,8 +896,9 @@ function renderQTable(){
       <td>${q.type==='ox' ? `<select data-f="answer"><option ${normOX(q.answer)==='O'?'selected':''}>O</option><option ${normOX(q.answer)==='X'?'selected':''}>X</option></select>` : `<input data-f="answer" value="${esc(q.answer)}" placeholder="${q.type==='mc'?'예) 2':'예) 관성,관성의 법칙'}">`}</td>
       <td><input data-f="time" type="number" min="5" max="180" value="${q.time}"></td>
       <td><input data-f="img" value="${esc(q.img)}" placeholder="https://..."></td>
+      <td><label style="display:flex;gap:4px;align-items:center;font-size:.8rem;font-weight:800;color:#c4561d;white-space:nowrap"><input type="checkbox" data-f="revival" ${q.revival?'checked':''} style="width:auto">🔥 패자부활</label>${q.revival ? `<input data-f="maxRevive" type="number" min="1" value="${q.maxRevive||''}" placeholder="빈칸=모두" title="최대 부활 인원 (비우면 맞힌 학생 모두)" style="margin-top:4px">` : ''}</td>
       <td><button class="mini" data-a="up">▲</button><button class="mini" data-a="down">▼</button><button class="mini" data-a="del" style="color:#c01">✕</button></td>
-    </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;padding:24px;color:#99a">아직 문제가 없어요. 위 버튼으로 추가하거나 '예시 문제 넣기'를 눌러 보세요.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="9" style="text-align:center;padding:24px;color:#99a">아직 문제가 없어요. 위 버튼으로 추가하거나 '예시 문제 넣기'를 눌러 보세요.</td></tr>`;
 }
 $('#qBody').addEventListener('input', e => {
   const tr = e.target.closest('tr'); if(!tr || tr.dataset.i === undefined) return;
@@ -900,6 +906,8 @@ $('#qBody').addEventListener('input', e => {
   if(f === 'type'){ q.type = e.target.value; if(q.type === 'ox') q.answer = normOX(q.answer) === 'X' ? 'X' : 'O'; else if(q.type === 'mc' && !/^\d/.test(q.answer)) q.answer = ''; renderQTable(); }
   else if(f.startsWith('c')) q.choices[+f[1]] = e.target.value;
   else if(f === 'time') q.time = Math.max(5, Math.min(180, +e.target.value || H.opt.time));
+  else if(f === 'revival'){ q.revival = e.target.checked; if(!q.revival) q.maxRevive = null; renderQTable(); }
+  else if(f === 'maxRevive') q.maxRevive = +e.target.value > 0 ? Math.floor(+e.target.value) : null;
   else q[f] = e.target.value;
   saveDraft();
 });
@@ -968,7 +976,8 @@ function updateCtrl(){
   $('#btnClose').disabled = H.phase !== 'question';
   $('#btnReviveLast').disabled = !(H.phase === 'reveal' && H.lastOut.length);
   $('#btnReviveAll').disabled = !(['reveal'].includes(H.phase) && H.elim.size);
-  $('#btnTidy').disabled = !(['reveal','judging'].includes(H.phase) && seatPids().some(p => H.elim.has(p)));
+  $('#btnTidy').disabled = isRev() || !(['reveal','judging'].includes(H.phase) && seatPids().some(p => H.elim.has(p)));
+  $('#btnReviveLast').disabled = $('#btnReviveLast').disabled || isRev();
   $('#btnEnd').disabled = ['ended','comments','done','lobby'].includes(H.phase);
 }
 function classStats(){
@@ -979,7 +988,8 @@ function classStats(){
 }
 
 const SEAT = {el:null, nodes:new Map()};
-function seatPids(){ return H.roster.length ? (H.seatOrder && H.seatOrder.length ? H.seatOrder : H.roster) : [...H.players.values()].sort((a,b) => (a.joinedAt||0) - (b.joinedAt||0) || a.pid.localeCompare(b.pid)).map(p => p.pid); }
+function seatPids(){ if(H.roster.length && isRev() && (H.phase === 'judging' || H.phase === 'reveal') && H.qAlive) return H.roster.filter(p => H.qAlive.has(p));
+  return H.roster.length ? (H.seatOrder && H.seatOrder.length ? H.seatOrder : H.roster) : [...H.players.values()].sort((a,b) => (a.joinedAt||0) - (b.joinedAt||0) || a.pid.localeCompare(b.pid)).map(p => p.pid); }
 function layoutSeats(N, W, Hh){
   let rows = [];
   for(let b = Math.min(160, Hh*.62, W/3); b >= 10; b *= .95){
@@ -1022,9 +1032,11 @@ function boardText(pid){
 function markSeats(){
   const started = H.roster.length > 0, aliveN = aliveList().length;
   const boards = (H.phase === 'judging' || H.phase === 'reveal') && H.qAlive;
+  SEAT.el && SEAT.el.classList.toggle('revseats', isRev() && !!boards);
   SEAT.el && SEAT.el.classList.toggle('boards', !!boards);
   for(const [pid, n] of SEAT.nodes){
-    const out = started && H.elim.has(pid), now = out && H.lastOut.includes(pid);
+    const revShow = isRev() && (H.phase === 'judging' || H.phase === 'reveal');
+    const out = started && !revShow && H.elim.has(pid), now = out && H.lastOut.includes(pid);
     const wasOut = n.classList.contains('gone') || n.classList.contains('out');
     n.classList.toggle('out', now && H.phase === 'reveal');
     n.classList.toggle('gone', out && !(now && H.phase === 'reveal'));
@@ -1078,7 +1090,8 @@ function renderStage(){
     st.innerHTML = `
       <div class="qhead"><span class="qno gold">Q${H.i+1}.</span><span class="qtype">${TYPE_LABEL[q.type]}</span>
         <div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,.2)" stroke-width="10" fill="none"/><circle id="ringArc" cx="50" cy="50" r="44" stroke="#ffc21a" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="0"/></svg><div class="t" id="ringT"></div></div>
-        <div class="subm" id="subm">제출 <b>${H.submitted}</b> / ${aliveList().length}</div></div>
+        <div class="subm" id="subm">제출 <b>${H.submitted}</b> / ${candList().length}</div></div>
+      ${q.revival ? `<div class="revban pop">🔥 패자부활전! <small>탈락한 학생만 풀어요 · ${q.maxRevive ? `빨리 맞힌 ${q.maxRevive}명 부활` : '맞히면 모두 부활'}</small></div>` : ''}
       <div class="qtext pop">${esc(q.text)}</div>
       ${q.img ? `<img class="qimg" src="${esc(q.img)}" alt="">` : ''}
       ${qVisual(q)}`;
@@ -1108,7 +1121,7 @@ function renderStage(){
         <div class="qtext"><span class="gold" style="filter:none;-webkit-text-fill-color:#e08a00">Q${H.i+1}.</span> ${esc(q.text)}</div>
         <div class="revrow">
           <div class="answerbox pop">정답 : ${esc(answerText(q, H.extra))}</div>
-          ${H.voided ? `<div class="resline"><span class="out">모두 틀렸어요! 이번 문제는 무효</span></div>`
+          ${isRev() ? `<div class="resline"><span class="out" style="color:#ff9a3c">🔥 부활 ${H.okSet ? H.okSet.size : 0}명</span><span class="alive">생존 ${alive.length}명</span></div>${H.okAll && H.okSet && H.okAll.size > H.okSet.size ? `<div class="hint" style="color:#fff">정답 ${H.okAll.size}명 중 빨리 맞힌 ${H.okSet.size}명</div>` : ''}` : H.voided ? `<div class="resline"><span class="out">모두 틀렸어요! 이번 문제는 무효</span></div>`
             : `<div class="resline">${H.revN ? `<span class="out" style="color:#ff9a3c">🔥 부활 ${H.revN}명</span>` : `<span class="out">탈락 ${H.lastOut.length}명</span>`}<span class="alive">생존 ${alive.length}명</span></div>`}
         </div>
       </div>
@@ -1178,8 +1191,15 @@ async function startGame(){
   H.roster = seatPids(); H.seatOrder = H.roster.slice(); H.elim = new Set(); H.lastOut = [];
   await goQuestion(0);
 }
-function publicQ(q){ return {type:q.type, text:q.text, choices:q.type === 'mc' ? q.choices : [], img:q.img || ''}; }
+function publicQ(q){ return {type:q.type, text:q.text, choices:q.type === 'mc' ? q.choices : [], img:q.img || '', revival:!!q.revival}; }
+const isRev = () => !!(H.quiz[H.i] && H.quiz[H.i].revival);
+const candList = () => isRev() ? H.roster.filter(p => H.elim.has(p)) : aliveList();
 async function goQuestion(i){
+  if(H.quiz[i] && H.quiz[i].revival && !H.roster.some(p => H.elim.has(p))){
+    toast(`${i+1}번은 패자부활 문제인데 탈락자가 없어서 건너뛰어요.`, 3500);
+    if(i + 1 < H.quiz.length) return goQuestion(i + 1);
+    return endGame();
+  }
   H.revN = 0; H.i = i; H.phase = 'question'; H.extra = new Set(); H.groups = null; H.submitted = 0; H.voided = false; H.lastOut = [];
   const q = H.quiz[i];
   H.startedAt = Date.now();
@@ -1197,7 +1217,7 @@ function startTimer(endAt){
     tickTimer();
     if(left <= 0 && H.phase === 'question' && H.opt.auto){ closeNow(false); }
   }, 200);
-  const poll = async () => { if(H.phase !== 'question') return; try{ H.submitted = await B.countAnswers(H.code, H.i); const el = $('#subm'); if(el) el.innerHTML = `제출 <b>${H.submitted}</b> / ${aliveList().length}`; }catch(e){ console.warn(e); } };
+  const poll = async () => { if(H.phase !== 'question') return; try{ H.submitted = await B.countAnswers(H.code, H.i); const el = $('#subm'); if(el) el.innerHTML = `제출 <b>${H.submitted}</b> / ${candList().length}`; }catch(e){ console.warn(e); } };
   poll(); H.poll = setInterval(poll, 2000);
 }
 function tickTimer(){
@@ -1219,9 +1239,9 @@ async function closeNow(manual){
 async function judge(){
   const q = H.quiz[H.i];
   const raw = await B.getAnswers(H.code, H.i);
-  const alive = new Set(aliveList());
-  H.ansMap = new Map();
-  for(const r of raw){ if(!alive.has(r.pid)) continue; const p = H.players.get(r.pid); if(p && p.uid && r.uid && p.uid !== r.uid) continue; H.ansMap.set(r.pid, r.a); }
+  const alive = new Set(candList());
+  H.ansMap = new Map(); H.ansAt = new Map();
+  for(const r of raw){ if(!alive.has(r.pid)) continue; const p = H.players.get(r.pid); if(p && p.uid && r.uid && p.uid !== r.uid) continue; H.ansMap.set(r.pid, r.a); H.ansAt.set(r.pid, r.at && r.at.toMillis ? r.at.toMillis() : (+r.at || 0)); }
   H.qAlive = new Set(alive); H.okSet = null;
   H.phase = 'judging'; saveSession(); buildGroups(); renderStage(); sfx.drum();
 }
@@ -1231,7 +1251,7 @@ function buildGroups(){
   const add = (k, label, pid) => { const g = m.get(k) || {k, label, pids:[]}; g.pids.push(pid); m.set(k, g); };
   if(q.type === 'mc') q.choices.forEach((c, j) => { if(c.trim()) m.set(String(j+1), {k:String(j+1), label:`${j+1}. ${c}`, pids:[]}); });
   if(q.type === 'ox'){ m.set('O', {k:'O', label:'O', pids:[]}); m.set('X', {k:'X', label:'X', pids:[]}); }
-  for(const pid of aliveList()){
+  for(const pid of (H.qAlive ? H.roster.filter(p => H.qAlive.has(p)) : candList())){
     if(!H.ansMap.has(pid)){ add('__none', '미제출', pid); continue; }
     const a = H.ansMap.get(pid), k = keyOf(q, a);
     if(!m.has(k)) m.set(k, {k, label: q.type === 'short' ? String(a).trim() : k, pids:[]});
@@ -1248,6 +1268,7 @@ function toggleAccept(k){
   saveSession(); buildGroups(); renderStage();
 }
 async function reveal(){
+  if(isRev()) return revealRevival();
   const okPids = new Set(H.groups.filter(g => g.ok).flatMap(g => g.pids));
   const alive = aliveList();
   let out = alive.filter(p => !okPids.has(p));
@@ -1259,7 +1280,19 @@ async function reveal(){
   await B.updateRoom(H.code, {state:'reveal', answerText:answerText(q, H.extra), correctKeys:[...acceptedSet(q), ...H.extra], eliminated:[...H.elim], lastOut:out, voided:H.voided, alive:aliveList().length, revived:[]});
   saveSession(); renderStage(); sfx.fanfare(); if(out.length) setTimeout(sfx.wrong, 900);
 }
-function toBack(rev){ H.revN = (H.revN || 0) + rev.length; const s = new Set(rev); H.seatOrder = seatPids().filter(p => !s.has(p)).concat(H.roster.filter(p => s.has(p))); if(H.qAlive) rev.forEach(p => H.qAlive.delete(p)); }
+function toBack(rev, keepBoards){ H.revN = (H.revN || 0) + rev.length; const s = new Set(rev); const base = (H.seatOrder && H.seatOrder.length ? H.seatOrder : H.roster); H.seatOrder = base.filter(p => !s.has(p)).concat(H.roster.filter(p => s.has(p))); if(H.qAlive && !keepBoards) rev.forEach(p => H.qAlive.delete(p)); }
+async function revealRevival(){
+  const q = H.quiz[H.i];
+  let ok = H.groups.filter(g => g.ok).flatMap(g => g.pids);
+  ok.sort((a, b) => (H.ansAt.get(a) || 0) - (H.ansAt.get(b) || 0));
+  const rev = q.maxRevive ? ok.slice(0, q.maxRevive) : ok;
+  H.okSet = new Set(rev); H.okAll = new Set(ok);
+  rev.forEach(p => H.elim.delete(p));
+  H.revN = 0; toBack(rev, true);
+  H.lastOut = []; H.voided = false; H.phase = 'reveal';
+  await B.updateRoom(H.code, {state:'reveal', answerText:answerText(q, H.extra), correctKeys:[...acceptedSet(q), ...H.extra], eliminated:[...H.elim], lastOut:[], voided:false, alive:aliveList().length, revived:rev, revOk:ok.length});
+  saveSession(); renderStage(); sfx.fanfare();
+}
 async function reviveLast(){
   if(!H.lastOut.length || !confirm(`직전 문제에서 탈락한 ${H.lastOut.length}명을 부활시킬까요?`)) return;
   const rev = H.lastOut; rev.forEach(p => H.elim.delete(p)); H.lastOut = []; toBack(rev);
@@ -1499,18 +1532,19 @@ function stuRender(){
   }
   if(r.state === 'question' || r.state === 'closed'){
     if(S.localEnd[r.qIndex] === undefined){ S.localEnd[r.qIndex] = Date.now() + r.duration*1000; stuSave(); }
-    const q = r.q, out = amOut(r), my = S.my[r.qIndex];
-    const open = !out && my === undefined && r.state === 'question' && Date.now() < S.localEnd[r.qIndex];
+    const q = r.q, out = amOut(r), my = S.my[r.qIndex], can = q.revival ? out : !out;
+    const open = can && my === undefined && r.state === 'question' && Date.now() < S.localEnd[r.qIndex];
     let inputs = '';
     if(q.type === 'mc') inputs = `<div class="sopts">${q.choices.map((c, j) => c.trim() ? `<button class="sopt k${j+1} ${my === String(j+1) ? 'picked' : ''}" data-a="${j+1}" ${open ? '' : 'disabled'}><span class="n">${j+1}</span><span>${esc(c)}</span></button>` : '').join('')}</div>`;
     else if(q.type === 'ox') inputs = `<div class="sox"><button class="o ${my==='O'?'picked':''}" data-a="O" ${open?'':'disabled'}>O</button><button class="x ${my==='X'?'picked':''}" data-a="X" ${open?'':'disabled'}>X</button></div>`;
     else inputs = open ? `<div class="sshort"><input id="sAns" maxlength="40" placeholder="정답을 입력하세요" autocomplete="off"><button class="btn primary" id="sSend">제출</button></div>` : '';
     let note = '';
-    if(out) note = '탈락했어요. 문제는 계속 볼 수 있어요.';
+    if(q.revival && !out) note = '패자부활전이 진행 중이에요.<br>탈락한 친구들이 푸는 동안 잠시 쉬어요.';
+    else if(out && !q.revival) note = '탈락했어요. 문제는 계속 볼 수 있어요.';
     else if(my !== undefined) note = `제출 완료! 내 답: <b>${esc(q.type === 'mc' ? my + '번' : my)}</b><br>정답 공개를 기다려요.`;
     else if(!open) note = '시간이 끝났어요. 정답 공개를 기다려요.';
     body.innerHTML = `
-      ${out ? '<div class="spect">탈락 — 관전 중</div>' : ''}
+      ${q.revival ? `<div class="revnote">🔥 패자부활전! ${out ? '맞히면 다시 살아나요' : '탈락한 학생만 풀어요'}</div>` : out ? '<div class="spect">탈락 — 관전 중</div>' : ''}
       <div class="tbar"><div id="sBar" style="width:100%"></div></div>
       <div class="sq"><div class="meta"><span>Q${r.qIndex+1} / ${r.total}</span><span>${TYPE_LABEL[q.type]} · <span id="sSec"></span></span></div>
         <div class="txt">${esc(q.text)}</div>${q.img ? `<img src="${esc(q.img)}" alt="">` : ''}</div>
@@ -1527,7 +1561,13 @@ function stuRender(){
     const lastOut = (r.lastOut || []).includes(S.pid), revived = (r.revived || []).includes(S.pid);
     const mine = my === undefined ? '' : `<br>내 답: <b>${esc(r.q.type === 'mc' ? my + '번' : my)}</b>`;
     let e, m, s;
-    if(revived && !out){ e = '🔥'; m = '부활!'; s = '다시 도전할 기회가 생겼어요!'; }
+    if(r.q && r.q.revival){
+      const lim = (r.revOk || 0) > (r.revived || []).length;
+      if(revived && !out){ e = '🔥'; m = '부활!'; s = `패자부활전 통과! 다시 도전해요.<br>정답: <b>${esc(r.answerText)}</b>${mine}`; }
+      else if(out){ e = '😢'; m = '아쉬워요'; s = `정답: <b>${esc(r.answerText)}</b>${mine}${lim && my !== undefined ? '<br>(빨리 맞힌 순서로 부활 인원이 정해졌어요)' : ''}`; }
+      else { e = '🔥'; m = '패자부활전 결과'; s = `<b>${(r.revived || []).length}명</b>이 다시 살아났어요!<br>정답: <b>${esc(r.answerText)}</b>`; }
+    }
+    else if(revived && !out){ e = '🔥'; m = '부활!'; s = '다시 도전할 기회가 생겼어요!'; }
     else if(lastOut){ e = '😭'; m = '탈락'; s = `정답: <b>${esc(r.answerText)}</b>${mine}`; }
     else if(out){ e = '👀'; m = '관전 중'; s = `정답: <b>${esc(r.answerText)}</b>`; }
     else if(r.voided){ e = '😮'; m = '무효!'; s = `모두 틀려서 이번 문제는 무효예요.<br>정답: <b>${esc(r.answerText)}</b>${mine}`; }
@@ -1561,7 +1601,7 @@ function stuTick(){
   const bar = $('#sBar'), sec = $('#sSec');
   if(bar) bar.style.width = (r.state === 'closed' ? 0 : left / (r.duration*1000) * 100) + '%';
   if(sec) sec.textContent = r.state === 'closed' ? '마감' : Math.ceil(left/1000) + '초';
-  const open = !amOut(r) && S.my[r.qIndex] === undefined && r.state === 'question' && left > 0;
+  const open = (r.q && r.q.revival ? amOut(r) : !amOut(r)) && S.my[r.qIndex] === undefined && r.state === 'question' && left > 0;
   if(!open && $('#sBody').querySelector('[data-a]:not([disabled]), #sAns')){ S.lastSig = ''; stuRender(); }
 }
 async function stuSubmit(a){
