@@ -397,6 +397,7 @@ body{font-synthesis:none;font-family:"Jua","Noto Sans CJK KR","Noto Sans KR",san
   <div class="panel" id="fbPanel">
     <h2>⓪ Firebase 연결 <span class="small" id="fbProj" style="font-weight:400"></span></h2>
     <p class="small" id="fbIntro" style="margin:0 0 8px">선생님마다 <b>자기 Firebase</b>(무료)를 연결해서 써요. 처음 한 번만 연결하면 이 브라우저에 저장돼요. 연결하지 않으면 체험 모드로만 돌아가요.</p>
+    <div class="row" id="fbAcct" style="display:none;margin-bottom:6px"><span class="small">방 만드는 계정: <b id="fbWho">익명</b></span><button class="btn" id="btnGLogin">구글 계정으로 로그인</button><button class="btn" id="btnGLogout" style="display:none">로그아웃</button><span class="small" id="fbAcctHint"></span></div>
     <div class="row" id="fbRowOn" style="display:none"><button class="btn" id="btnFbRecheck">연결 다시 확인</button><button class="btn" id="btnFbChange">다른 Firebase로 바꾸기</button><button class="btn" id="btnFbOff">연결 해제(체험 모드)</button></div>
     <details class="guide" id="fbGuide"><summary>Firebase 만들고 연결하는 방법 (처음 한 번, 10분쯤)</summary>
       <ol>
@@ -691,6 +692,9 @@ async function FireBackend(cfg){
     mode:'live',
     async init(){ if(uid) return uid; await (auth.authStateReady ? auth.authStateReady() : Promise.resolve()); if(auth.currentUser){ uid = auth.currentUser.uid; return uid; } const cr = await au.signInAnonymously(auth); uid = cr.user.uid; return uid; },
     async getRoom(c){ const s = await fs.getDoc(R(c)); return s.exists() ? s.data() : null; },
+    who(){ const u = auth.currentUser; return u && !u.isAnonymous ? (u.email || '구글 계정') : null; },
+    async googleLogin(){ const pv = new au.GoogleAuthProvider(); pv.setCustomParameters({prompt:'select_account'}); const cr = await au.signInWithPopup(auth, pv); uid = cr.user.uid; return cr.user.email; },
+    async logout(){ await au.signOut(auth); uid = null; },
     setRoom: (c, d) => fs.setDoc(R(c), d),
     updateRoom: (c, p) => fs.updateDoc(R(c), p),
     onRoom: (c, cb) => fs.onSnapshot(R(c), s => cb(s.exists() ? s.data() : null), e => { console.error(e); toast('연결 오류: ' + e.code); }),
@@ -827,6 +831,21 @@ const FB_HINT = {
   'failed-precondition':'Firestore 데이터베이스가 아직 없어요. 데이터베이스를 만들어 주세요. (방법 3번)',
   'unavailable':'인터넷 연결을 확인하거나, Firestore 데이터베이스를 만들었는지 확인해 주세요.',
 };
+function acctUI(msg){
+  if(!B || B.mode !== 'live' || !B.who) return;
+  const w = B.who();
+  $('#fbAcct').style.display = '';
+  $('#fbWho').textContent = w || '익명 (로그인 안 함)';
+  $('#btnGLogin').style.display = w ? 'none' : '';
+  $('#btnGLogout').style.display = w ? '' : 'none';
+  $('#fbAcctHint').textContent = msg || (w ? '' : '허락된 계정만 방을 만들 수 있게 잠긴 Firebase라면 로그인하세요.');
+  $('#fbAcctHint').style.color = msg ? '#c0392b' : '';
+  $('#btnGLogin').onclick = async () => {
+    try{ const em = await B.googleLogin(); localStorage.removeItem(HKEY); acctUI(); toast(em + '로 로그인했어요.'); }
+    catch(e){ console.error(e); acctUI(e.code === 'auth/unauthorized-domain' ? 'Firebase 승인된 도메인에 이 주소가 없어요.' : e.code === 'auth/operation-not-allowed' ? 'Firebase에서 Google 로그인을 사용 설정해 주세요.' : /popup/.test(e.code||'') ? '로그인 창이 닫혔거나 막혔어요. 팝업을 허용하고 다시 눌러 주세요.' : '로그인 실패: ' + (e.code || e.message)); }
+  };
+  $('#btnGLogout').onclick = async () => { await B.logout(); await B.init(); localStorage.removeItem(HKEY); acctUI(); };
+}
 function fbSetup(){
   const cfg = window.FIREBASE_CONFIG;
   const badge = (cls, txt, sub) => { $('#modeBadge').className = 'modebadge ' + cls; $('#modeBadge').textContent = txt; $('#modeText').textContent = sub || ''; };
@@ -858,6 +877,7 @@ function fbSetup(){
       await getBackend(); await B.init(); await B.getRoom('000000');
       badge('live', '실제 모드 (Firebase 연결됨)', `내 Firebase(${cfg.projectId})에 연결돼 있어요. 학생들이 각자 기기에서 접속할 수 있어요.`);
       H.fbOK = true;
+      acctUI();
     }catch(e){
       console.error(e);
       const code = String(e && e.code || '').toLowerCase();
@@ -1026,7 +1046,15 @@ async function createRoom(){
     await B.setRoom(code, {hostUid:uid, title:H.title || '2026 도전! 골든벨', state:'lobby', qIndex:-1, total:H.quiz.length, q:null, eliminated:[], lastOut:[], alive:0, createdAt:Date.now()});
     Object.assign(H, {code, phase:'lobby', i:-1, roster:[], elim:new Set(), lastOut:[], extra:new Set(), voided:false});
     saveSession(); openStage();
-  }catch(e){ console.error(e); toast('방을 만들지 못했어요: ' + (e.code || e.message), 5000); }
+  }catch(e){
+    console.error(e);
+    if(e.code === 'permission-denied' && B && B.who){
+      const w = B.who();
+      acctUI(w ? `${w}은(는) 이 Firebase에서 방을 만들 수 없는 계정이에요.` : '이 Firebase는 허락된 구글 계정만 방을 만들 수 있어요. 로그인한 뒤 다시 방을 만들어 주세요.');
+      $('#fbPanel').scrollIntoView({behavior:'smooth'});
+      toast(w ? '방을 만들 수 없는 계정이에요.' : '구글 계정으로 로그인한 뒤 다시 눌러 주세요.', 5000);
+    } else toast('방을 만들지 못했어요: ' + (e.code || e.message), 5000);
+  }
   btn.disabled = false;
 }
 async function resumeSession(s){
