@@ -6,26 +6,57 @@
 <title>2026 도전! 골든벨</title>
 <script>
 /* ============================================================
-   ▼ Firebase 연결 설정 — 여기에 Firebase 콘솔에서 복사한 설정을 붙여 넣으세요.
-   비워 두면(null) '체험 모드'로 동작합니다. (같은 브라우저의 탭끼리만 연결)
-   예)
-   window.FIREBASE_CONFIG = {
-     apiKey: "AIza....",
-     authDomain: "my-goldenbell.firebaseapp.com",
-     projectId: "my-goldenbell",
-     storageBucket: "my-goldenbell.appspot.com",
-     messagingSenderId: "1234567890",
-     appId: "1:1234567890:web:abcdef"
-   };
+   Firebase 연결 설정
+   - 교사: 교사 화면(?host)의 [Firebase 연결]에 자기 프로젝트 설정을 붙여 넣으면
+     이 브라우저에 저장돼요. (선생님마다 자기 Firebase를 쓰므로 한도·데이터가 따로예요.)
+   - 학생: QR·링크 주소의 fb=… 값으로 그 선생님의 Firebase에 연결돼요.
+   - 아무 설정이 없으면 '체험 모드'(같은 브라우저의 탭끼리만 연결)로 동작해요.
    ============================================================ */
-window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyA9HjlJ9618j6WjqGgjUVajVWLDl-kiHf8",
-  authDomain: "goldenbell-2026.firebaseapp.com",
-  projectId: "goldenbell-2026",
-  storageBucket: "goldenbell-2026.firebasestorage.app",
-  messagingSenderId: "242092141061",
-  appId: "1:242092141061:web:a07886689b8a4a31a14a6c"
-};
+(function(){
+  /* 예전에 fb 값 없이 만든 학생 링크(?room=코드)를 위한 기본 연결 */
+  var LEGACY = {
+    apiKey: "AIzaSyA9HjlJ9618j6WjqGgjUVajVWLDl-kiHf8",
+    authDomain: "goldenbell-2026.firebaseapp.com",
+    projectId: "goldenbell-2026",
+    storageBucket: "goldenbell-2026.firebasestorage.app",
+    messagingSenderId: "242092141061",
+    appId: "1:242092141061:web:a07886689b8a4a31a14a6c"
+  };
+  var KEY = 'gb:fbcfg:v1';
+  function fromShort(s){
+    var a = String(s || '').split('~');
+    if(a.length < 3 || !a[0] || !a[1] || !a[2]) return null;
+    return {apiKey:a[1], authDomain:a[0] + '.firebaseapp.com', projectId:a[0], appId:a.slice(2).join('~')};
+  }
+  window.GB_FB = {
+    KEY: KEY,
+    fromShort: fromShort,
+    toShort: function(c){ return c ? c.projectId + '~' + c.apiKey + '~' + c.appId : ''; },
+    parse: function(txt){
+      txt = String(txt || '').trim();
+      if(!txt) return null;
+      if(/^[\w-]+~[\w-]+~\S+$/.test(txt)) return fromShort(txt);
+      var g = function(k){ var m = txt.match(new RegExp('["\']?' + k + '["\']?\\s*:\\s*["\']([^"\']+)["\']')); return m ? m[1].trim() : ''; };
+      var c = {apiKey:g('apiKey'), authDomain:g('authDomain'), projectId:g('projectId'), appId:g('appId')};
+      if(!c.apiKey || !c.projectId || !c.appId) return null;
+      if(!c.authDomain) c.authDomain = c.projectId + '.firebaseapp.com';
+      return c;
+    },
+    source: 'none'
+  };
+  var p = new URLSearchParams(location.search), cfg = null;
+  var fb = p.get('fb') ? fromShort(p.get('fb')) : null;
+  if(p.has('host')){
+    if(fb){ try{ localStorage.setItem(KEY, JSON.stringify(fb)); }catch(e){} }
+    try{ cfg = JSON.parse(localStorage.getItem(KEY) || 'null'); }catch(e){ cfg = null; }
+    if(cfg) window.GB_FB.source = 'saved';
+  } else if(fb){
+    cfg = fb; window.GB_FB.source = 'link';
+  } else {
+    cfg = LEGACY; window.GB_FB.source = 'legacy';
+  }
+  window.FIREBASE_CONFIG = cfg;
+})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
@@ -363,55 +394,16 @@ body{font-synthesis:none;font-family:"Jua","Noto Sans CJK KR","Noto Sans KR",san
   <div class="logo" style="font-size:2.4rem"><svg><use href="#bell"/></svg><span class="gold" id="setupTitle">2026 도전! 골든벨</span></div>
   <div style="margin-top:6px"><span id="modeBadge" class="modebadge"></span> <span class="small" style="color:#cfd6f5" id="modeText"></span></div>
 
-  <div class="panel" id="resumePanel" style="display:none">
-    <h2>진행하던 방이 있어요</h2>
-    <div class="row"><span id="resumeInfo"></span><button class="btn primary" id="btnResume">이어서 진행</button><button class="btn" id="btnDiscard">버리고 새로 시작</button></div>
-  </div>
-
-  <div class="panel">
-    <h2>① 대회 설정</h2>
-    <div class="row">
-      <label class="field" style="flex:1;min-width:240px">대회 이름<input id="optTitle" placeholder="예) 2026 도전! 골든벨"></label>
-      <label class="field">기본 제한시간(초)<input id="optTime" type="number" min="5" max="180" value="20" style="width:120px"></label>
-      <label class="field">시간 끝나면<select id="optAuto"><option value="1">자동 마감</option><option value="0">교사가 직접 마감</option></select></label>
-      <label class="field">모두 틀리면<select id="optVoid"><option value="1">무효(아무도 탈락 안 함)</option><option value="0">전원 탈락</option></select></label>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2>② 문제 만들기 <span class="small" id="qCount"></span></h2>
-    <div class="row" style="margin-bottom:10px">
-      <button class="btn" id="btnAddMC">+ 객관식</button>
-      <button class="btn" id="btnAddOX">+ OX</button>
-      <button class="btn" id="btnAddShort">+ 단답형</button>
-      <span style="flex:1"></span>
-      <button class="btn ghost" style="color:var(--ink);border-color:#cfd5e8" id="btnSample">예시 문제 넣기</button>
-      <a class="btn primary" href="goldenbell_template.xlsx" download="골든벨_문제양식.xlsx" style="text-decoration:none">📥 엑셀 양식 받기</a>
-      <label class="btn primary">📤 엑셀 올리기<input type="file" id="xlsxImport" accept=".xlsx,.csv" hidden></label>
-      <button class="btn ghost" style="color:var(--ink);border-color:#cfd5e8" id="btnExport">파일로 저장</button>
-      <label class="btn ghost" style="color:var(--ink);border-color:#cfd5e8">파일 불러오기<input type="file" id="fileImport" accept=".json" hidden></label>
-      <button class="btn danger" id="btnClear">전체 삭제</button>
-    </div>
-    <div class="tw"><table class="qtable"><thead><tr>
-      <th style="width:38px">#</th><th style="width:96px">유형</th><th>문제</th><th style="width:34%">보기 (객관식만)</th><th style="width:120px">정답</th><th style="width:70px">시간</th><th style="width:150px">그림 주소(선택)</th><th style="width:104px">패자부활 · 최대 인원</th><th style="width:84px"></th>
-    </tr></thead><tbody id="qBody"></tbody></table></div>
-    <p class="small" style="margin-top:8px">정답 적는 법 — 객관식: 번호(복수 정답은 <b>2,3</b>) · OX: <b>O</b> 또는 <b>X</b> · 단답형: 인정할 답을 쉼표로(<b>관성,관성의 법칙</b>). 단답형은 띄어쓰기·대소문자·문장부호를 무시하고 채점해요.</p>
-    <details class="guide"><summary>엑셀·구글 시트에서 한꺼번에 붙여 넣기</summary>
-      <p class="small" style="margin:8px 0">열 순서: <b>유형 | 문제 | 보기1 | 보기2 | 보기3 | 보기4 | 정답 | 시간 | 그림주소</b> (유형: 객관식 / OX / 단답형). 시트에서 행을 복사해 아래에 붙여 넣으세요. 첫 줄이 '유형'이면 제목 줄로 보고 건너뜁니다.</p>
-      <textarea class="paste" id="pasteArea" placeholder="여기에 붙여 넣기"></textarea>
-      <div class="row" style="margin-top:8px"><button class="btn" id="btnPasteAdd">붙여 넣은 내용 읽기</button></div>
-    </details>
-  </div>
-
-  <div class="panel">
-    <h2>③ 방 만들기</h2>
-    <div class="row"><button class="btn primary" style="font-size:1.2rem" id="btnCreate">방 만들고 입장 화면 열기</button><span class="small">방을 만들면 TV에 띄울 입장 화면이 열려요. 학생은 입장 코드나 QR로 들어와요.</span></div>
-    <details class="guide"><summary>Firebase 연결 방법 (실제 400명 진행용, 처음 한 번만)</summary>
+  <div class="panel" id="fbPanel">
+    <h2>⓪ Firebase 연결 <span class="small" id="fbProj" style="font-weight:400"></span></h2>
+    <p class="small" id="fbIntro" style="margin:0 0 8px">선생님마다 <b>자기 Firebase</b>(무료)를 연결해서 써요. 처음 한 번만 연결하면 이 브라우저에 저장돼요. 연결하지 않으면 체험 모드로만 돌아가요.</p>
+    <div class="row" id="fbRowOn" style="display:none"><button class="btn" id="btnFbRecheck">연결 다시 확인</button><button class="btn" id="btnFbChange">다른 Firebase로 바꾸기</button><button class="btn" id="btnFbOff">연결 해제(체험 모드)</button></div>
+    <details class="guide" id="fbGuide"><summary>Firebase 만들고 연결하는 방법 (처음 한 번, 10분쯤)</summary>
       <ol>
-        <li><b>console.firebase.google.com</b>에서 <b>프로젝트 추가</b> (애널리틱스는 꺼도 돼요).</li>
-        <li>왼쪽 메뉴 <b>Build → Authentication → 시작하기 → 로그인 방법 → '익명'</b>을 사용 설정.</li>
-        <li><b>Build → Firestore Database → 데이터베이스 만들기</b> (위치: asia-northeast3 서울, <b>프로덕션 모드</b>).</li>
-        <li>Firestore의 <b>규칙</b> 탭에 아래 내용을 붙여 넣고 <b>게시</b>.
+        <li><b>console.firebase.google.com</b>에 구글 계정으로 들어가 <b>프로젝트 만들기</b> (애널리틱스는 꺼도 돼요).</li>
+        <li>왼쪽 메뉴 <b>빌드 → Authentication → 시작하기 → 로그인 방법 → '익명'</b>을 사용 설정.</li>
+        <li><b>빌드 → Firestore Database → 데이터베이스 만들기</b> (위치: <b>asia-northeast3 (서울)</b>, <b>프로덕션 모드</b>).</li>
+        <li>Firestore의 <b>규칙</b> 탭 내용을 모두 지우고 아래 내용을 붙여 넣은 뒤 <b>게시</b>. <button class="btn" id="btnCopyRules" style="padding:2px 10px;font-size:.85rem">규칙 복사</button>
 <pre>rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
@@ -457,12 +449,59 @@ service cloud.firestore {
     }
   }
 }</pre></li>
-        <li><b>프로젝트 설정(톱니바퀴) → 내 앱 → 웹 앱 추가(&lt;/&gt;)</b> → 나오는 <b>firebaseConfig</b> 내용을 이 파일 맨 위 <b>window.FIREBASE_CONFIG</b> 자리에 붙여 넣기.</li>
-        <li>이 파일을 GitHub Pages에 올린 뒤, 그 주소(예: <b>아이디.github.io</b>)를 <b>Authentication → 설정 → 승인된 도메인</b>에 추가.</li>
-        <li>교사 화면: <b>주소?host</b> · 학생 화면: <b>주소</b> (QR로 안내됨).</li>
+        <li><b>프로젝트 설정(톱니바퀴) → 내 앱 → 웹(&lt;/&gt;) 앱 추가</b> → 앱 이름만 적고 등록 → 나오는 <b>firebaseConfig</b> 코드를 통째로 복사해 아래 칸에 붙여 넣고 <b>연결하기</b>.</li>
       </ol>
-      <p class="small" style="margin-top:8px">무료(Spark) 한도는 하루 읽기 5만·쓰기 2만 건이에요. 400명이 30문제쯤 풀면 한도 안에 들어와요. 리허설은 행사 전날 해 주세요(한도는 매일 초기화). 본행사에서 한도에 걸리면 그날은 멈추니, 불안하면 Blaze(종량제)로 바꾸고 예산 알림을 걸어 두세요. 이 규모면 요금은 몇십 원 수준이에요.</p>
     </details>
+    <div id="fbForm" style="margin-top:8px">
+      <textarea class="paste" id="fbPaste" placeholder="const firebaseConfig = { apiKey: &quot;…&quot;, authDomain: &quot;…&quot;, projectId: &quot;…&quot;, … }; 를 통째로 붙여 넣기"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="btnFbSave">연결하기</button><span class="small" id="fbErr" style="color:#c0392b;font-weight:700"></span></div>
+    </div>
+    <p class="small" style="margin-top:8px">무료(Spark) 한도는 하루 읽기 5만·쓰기 2만 건이에요. 400명 규모 행사 한 번은 대체로 들어오지만, 리허설은 행사 전날 해 주세요(한도는 매일 오후 5시쯤 초기화). 불안하면 Blaze(종량제)로 바꾸고 예산 알림을 걸어 두세요.</p>
+  </div>
+
+  <div class="panel" id="resumePanel" style="display:none">
+    <h2>진행하던 방이 있어요</h2>
+    <div class="row"><span id="resumeInfo"></span><button class="btn primary" id="btnResume">이어서 진행</button><button class="btn" id="btnDiscard">버리고 새로 시작</button></div>
+  </div>
+
+  <div class="panel">
+    <h2>① 대회 설정</h2>
+    <div class="row">
+      <label class="field" style="flex:1;min-width:240px">대회 이름<input id="optTitle" placeholder="예) 2026 도전! 골든벨"></label>
+      <label class="field">기본 제한시간(초)<input id="optTime" type="number" min="5" max="180" value="20" style="width:120px"></label>
+      <label class="field">시간 끝나면<select id="optAuto"><option value="1">자동 마감</option><option value="0">교사가 직접 마감</option></select></label>
+      <label class="field">모두 틀리면<select id="optVoid"><option value="1">무효(아무도 탈락 안 함)</option><option value="0">전원 탈락</option></select></label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>② 문제 만들기 <span class="small" id="qCount"></span></h2>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn" id="btnAddMC">+ 객관식</button>
+      <button class="btn" id="btnAddOX">+ OX</button>
+      <button class="btn" id="btnAddShort">+ 단답형</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" style="color:var(--ink);border-color:#cfd5e8" id="btnSample">예시 문제 넣기</button>
+      <a class="btn primary" href="goldenbell_template.xlsx" download="골든벨_문제양식.xlsx" style="text-decoration:none">📥 엑셀 양식 받기</a>
+      <label class="btn primary">📤 엑셀 올리기<input type="file" id="xlsxImport" accept=".xlsx,.csv" hidden></label>
+      <button class="btn ghost" style="color:var(--ink);border-color:#cfd5e8" id="btnExport">파일로 저장</button>
+      <label class="btn ghost" style="color:var(--ink);border-color:#cfd5e8">파일 불러오기<input type="file" id="fileImport" accept=".json" hidden></label>
+      <button class="btn danger" id="btnClear">전체 삭제</button>
+    </div>
+    <div class="tw"><table class="qtable"><thead><tr>
+      <th style="width:38px">#</th><th style="width:96px">유형</th><th>문제</th><th style="width:34%">보기 (객관식만)</th><th style="width:120px">정답</th><th style="width:70px">시간</th><th style="width:150px">그림 주소(선택)</th><th style="width:104px">패자부활 · 최대 인원</th><th style="width:84px"></th>
+    </tr></thead><tbody id="qBody"></tbody></table></div>
+    <p class="small" style="margin-top:8px">정답 적는 법 — 객관식: 번호(복수 정답은 <b>2,3</b>) · OX: <b>O</b> 또는 <b>X</b> · 단답형: 인정할 답을 쉼표로(<b>관성,관성의 법칙</b>). 단답형은 띄어쓰기·대소문자·문장부호를 무시하고 채점해요.</p>
+    <details class="guide"><summary>엑셀·구글 시트에서 한꺼번에 붙여 넣기</summary>
+      <p class="small" style="margin:8px 0">열 순서: <b>유형 | 문제 | 보기1 | 보기2 | 보기3 | 보기4 | 정답 | 시간 | 그림주소</b> (유형: 객관식 / OX / 단답형). 시트에서 행을 복사해 아래에 붙여 넣으세요. 첫 줄이 '유형'이면 제목 줄로 보고 건너뜁니다.</p>
+      <textarea class="paste" id="pasteArea" placeholder="여기에 붙여 넣기"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnPasteAdd">붙여 넣은 내용 읽기</button></div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h2>③ 방 만들기</h2>
+    <div class="row"><button class="btn primary" style="font-size:1.2rem" id="btnCreate">방 만들고 입장 화면 열기</button><span class="small">방을 만들면 TV에 띄울 입장 화면이 열려요. 학생은 QR이나 [학생 링크 복사]로 보낸 주소로 들어와요.</span></div>
   </div>
 </div>
 
@@ -754,10 +793,7 @@ function hostSetupInit(){
   if(d){ H.title = d.title || ''; H.quiz = d.quiz || []; H.opt = {...H.opt, ...(d.opt||{})}; }
   $('#optTitle').value = H.title; $('#optTime').value = H.opt.time; $('#optAuto').value = H.opt.auto ? '1':'0'; $('#optVoid').value = H.opt.voidAll ? '1':'0';
   $('#setupTitle').textContent = H.title || '2026 도전! 골든벨';
-  const live = !!window.FIREBASE_CONFIG;
-  $('#modeBadge').className = 'modebadge ' + (live ? 'live' : 'demo');
-  $('#modeBadge').textContent = live ? '실제 모드 (Firebase 연결됨)' : '체험 모드';
-  $('#modeText').textContent = live ? '학생들이 각자 기기에서 접속할 수 있어요.' : '이 브라우저의 다른 탭에서만 학생으로 들어올 수 있어요. 400명 진행은 아래 Firebase 연결 후 가능해요.';
+  fbSetup();
   const s = JSON.parse(localStorage.getItem(HKEY) || 'null');
   if(s && s.code){
     $('#resumePanel').style.display = '';
@@ -778,6 +814,62 @@ function hostSetupInit(){
   $('#xlsxImport').onchange = e => { const f = e.target.files[0]; if(f) importFile(f); e.target.value = ''; };
   $('#btnCreate').onclick = createRoom;
   renderQTable();
+}
+/* ---------- Firebase 연결(교사별) ---------- */
+const FB_HINT = {
+  'auth/admin-restricted-operation':'Authentication에서 \'익명\' 로그인을 사용 설정해 주세요. (방법 2번)',
+  'auth/operation-not-allowed':'Authentication에서 \'익명\' 로그인을 사용 설정해 주세요. (방법 2번)',
+  'auth/configuration-not-found':'Authentication을 시작하고 \'익명\' 로그인을 사용 설정해 주세요. (방법 2번)',
+  'auth/invalid-api-key':'apiKey가 맞지 않아요. firebaseConfig를 다시 복사해 주세요.',
+  'auth/api-key-not-valid.-please-pass-a-valid-api-key.':'apiKey가 맞지 않아요. firebaseConfig를 다시 복사해 주세요.',
+  'permission-denied':'Firestore 규칙이 아직 안 바뀌었어요. 규칙을 붙여 넣고 [게시]를 눌러 주세요. (방법 4번)',
+  'not-found':'Firestore 데이터베이스가 아직 없어요. 데이터베이스를 만들어 주세요. (방법 3번)',
+  'failed-precondition':'Firestore 데이터베이스가 아직 없어요. 데이터베이스를 만들어 주세요. (방법 3번)',
+  'unavailable':'인터넷 연결을 확인하거나, Firestore 데이터베이스를 만들었는지 확인해 주세요.',
+};
+function fbSetup(){
+  const cfg = window.FIREBASE_CONFIG;
+  const badge = (cls, txt, sub) => { $('#modeBadge').className = 'modebadge ' + cls; $('#modeBadge').textContent = txt; $('#modeText').textContent = sub || ''; };
+  const showForm = on => { $('#fbForm').style.display = on ? '' : 'none'; $('#fbRowOn').style.display = (!on && cfg) ? '' : 'none'; };
+  $('#btnCopyRules').onclick = e => { e.preventDefault(); copyText($('#fbGuide pre').textContent, '규칙을 복사했어요. Firestore 규칙 탭에 붙여 넣고 [게시]를 누르세요.'); };
+  $('#btnFbSave').onclick = () => {
+    const c = window.GB_FB.parse($('#fbPaste').value);
+    if(!c) return $('#fbErr').textContent = 'apiKey, projectId, appId를 찾지 못했어요. firebaseConfig 부분을 통째로 붙여 넣어 주세요.';
+    if(localStorage.getItem(HKEY) && !confirm('연결을 바꾸면 진행하던 방 기록은 지워져요. 계속할까요?')) return;
+    localStorage.setItem(window.GB_FB.KEY, JSON.stringify(c));
+    localStorage.removeItem(HKEY);
+    location.href = location.pathname + '?host';
+  };
+  $('#btnFbChange').onclick = () => { showForm(true); $('#fbGuide').open = true; $('#fbPaste').focus(); };
+  $('#btnFbOff').onclick = () => { if(!confirm('Firebase 연결을 해제하고 체험 모드로 바꿀까요? (Firebase에 있는 자료는 지워지지 않아요)')) return; localStorage.removeItem(window.GB_FB.KEY); localStorage.removeItem(HKEY); location.href = location.pathname + '?host'; };
+  $('#btnFbRecheck').onclick = () => location.reload();
+  if(!cfg){
+    badge('demo', '체험 모드', '이 브라우저의 다른 탭에서만 학생으로 들어올 수 있어요. 400명 진행은 위 ⓪에서 Firebase를 연결하세요.');
+    $('#fbProj').textContent = '— 아직 연결 안 됨';
+    showForm(true);
+    return;
+  }
+  $('#fbProj').textContent = '— ' + cfg.projectId;
+  showForm(false);
+  $('#fbGuide').open = false;
+  badge('demo', '연결 확인 중…', cfg.projectId);
+  (async () => {
+    try{
+      await getBackend(); await B.init(); await B.getRoom('000000');
+      badge('live', '실제 모드 (Firebase 연결됨)', `내 Firebase(${cfg.projectId})에 연결돼 있어요. 학생들이 각자 기기에서 접속할 수 있어요.`);
+      H.fbOK = true;
+    }catch(e){
+      console.error(e);
+      const code = String(e && e.code || '').toLowerCase();
+      const msg = String(e && e.message || '');
+      const hint = /dynamically imported|Failed to fetch|network/i.test(msg) ? '인터넷 연결을 확인해 주세요. (Firebase를 불러오지 못했어요)' : FB_HINT[code] || Object.entries(FB_HINT).find(([k]) => code.includes(k))?.[1] || ('연결 오류: ' + (e && (e.code || e.message) || e));
+      badge('demo', '연결 문제', hint);
+      $('#fbProj').textContent = '— ' + cfg.projectId + ' (확인 필요)';
+      $('#fbRowOn').style.display = '';
+      $('#fbGuide').open = true;
+      H.fbOK = false;
+    }
+  })();
 }
 function fixQ(q){ return {type:['mc','ox','short'].includes(q.type) ? q.type : 'mc', text:q.text||'', choices:[0,1,2,3].map(i => (q.choices||[])[i] || ''), answer:String(q.answer ?? ''), time:+q.time || H.opt.time, img:q.img || '', revival:!!q.revival, maxRevive:+q.maxRevive > 0 ? Math.floor(+q.maxRevive) : null}; }
 function addQ(type){ H.quiz.push(blankQ(type, H.opt.time)); renderQTable(); saveDraft(); const rows = $('#qBody').rows; rows[rows.length-1]?.querySelector('textarea')?.focus(); }
@@ -924,6 +1016,8 @@ $('#qBody').addEventListener('click', e => {
 async function createRoom(){
   if(!H.quiz.length) return toast('문제를 먼저 만들어 주세요.');
   const err = validateQuiz(H.quiz); if(err) return toast(err, 4000);
+  if(!window.FIREBASE_CONFIG && !confirm('Firebase가 연결되지 않아 체험 모드로 방을 만들어요.\n(이 브라우저의 다른 탭에서만 학생으로 들어올 수 있어요)\n\n계속할까요?')) return;
+  if(window.FIREBASE_CONFIG && H.fbOK === false){ $('#fbPanel').scrollIntoView({behavior:'smooth'}); return toast('Firebase 연결에 문제가 있어요. 위 ⓪의 안내를 먼저 확인해 주세요.', 5000); }
   const btn = $('#btnCreate'); btn.disabled = true;
   try{
     await getBackend(); const uid = await B.init();
@@ -1065,21 +1159,32 @@ function tidySeats(){
 }
 window.addEventListener('resize', () => { clearTimeout(SEAT.rt); SEAT.rt = setTimeout(renderSeats, 150); });
 
+function studentURL(){
+  let u = location.origin + location.pathname + '?room=' + H.code;
+  if(window.FIREBASE_CONFIG && B && B.mode === 'live') u += '&fb=' + encodeURIComponent(window.GB_FB.toShort(window.FIREBASE_CONFIG));
+  return u;
+}
+function copyText(s, msg){
+  const ok = () => toast(msg);
+  if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(s).then(ok, () => prompt('아래 주소를 복사하세요.', s));
+  else prompt('아래 주소를 복사하세요.', s);
+}
 function renderStage(){
   renderTop(); updateCtrl();
   const st = $('#stage');
   const q = H.quiz[H.i];
   st.classList.toggle('full', H.phase === 'lobby' || H.phase === 'reveal');
   if(H.phase === 'lobby'){
-    const url = location.origin + location.pathname + '?room=' + H.code;
+    const url = studentURL();
     if(!$('#lobbyTop')){
       st.innerHTML = `
         <div class="lobbytop" id="lobbyTop">
-          <div class="codebox"><div class="lbl">입장 코드</div><div class="code">${H.code}</div><div class="url">${esc(url.replace(/^https?:\/\//,''))}</div></div>
+          <div class="codebox"><div class="lbl">입장 코드</div><div class="code">${H.code}</div><div class="url">QR을 찍거나 선생님이 보낸 링크로 들어와요 <button class="btn ghost" id="btnCopyLink" style="padding:2px 10px;font-size:.8em;margin-left:4px">학생 링크 복사</button></div></div>
           <div id="qr"></div>
           <div class="jbig"><span class="gold" id="jCount">0명</span><br>입장</div>
         </div>
         <div class="seatwrap" id="seatwrap"></div>`;
+      $('#btnCopyLink').onclick = () => copyText(url, '학생 링크를 복사했어요. 학급 메신저 등으로 보내 주세요.');
       if(window.QRCode){ try{ new QRCode($('#qr'), {text:url, width:280, height:280, correctLevel:QRCode.CorrectLevel.M}); }catch(e){ $('#qr').remove(); } } else $('#qr').remove();
     }
     $('#jCount').textContent = H.players.size + '명';
@@ -1426,7 +1531,7 @@ function stuJoinForm(err = ''){
     try{
       await getBackend(); await B.init();
       const room = await B.getRoom(code);
-      if(!room){ $('#jGo').disabled = false; return $('#jErr').textContent = '방을 찾을 수 없어요. 코드를 확인해 주세요.'; }
+      if(!room){ $('#jGo').disabled = false; return $('#jErr').textContent = window.GB_FB.source === 'legacy' ? '방을 찾을 수 없어요. 코드를 확인하거나, 선생님이 보낸 링크(QR)로 다시 들어와 주세요.' : '방을 찾을 수 없어요. 코드를 확인해 주세요.'; }
       $('#sTitle').textContent = room.title || '2026 도전! 골든벨';
       if(S.code !== code || S.pid !== pid){ S.my = {}; S.localEnd = {}; S.av = null; }
       Object.assign(S, {code, pid});
